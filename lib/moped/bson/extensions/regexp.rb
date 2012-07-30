@@ -5,9 +5,9 @@ module Moped
       module Regexp
         module ClassMethods
           def __bson_load__(io)
-            source = io.gets(NULL_BYTE).chop!.force_encoding('utf-8')
+            source = io.gets(NULL_BYTE).from_utf8_binary.chop!
             options = 0
-            while (option = io.getbyte) != 0
+            while (option = io.readbyte) != 0
               case option
               when 105 # 'i'
                 options |= ::Regexp::IGNORECASE
@@ -24,13 +24,9 @@ module Moped
 
         def __bson_dump__(io, key)
           io << Types::REGEX
-          io << key
-          io << NULL_BYTE
+          io << key.to_bson_cstring
 
-          data = Extensions.force_binary(source)
-
-          io << data
-          io << NULL_BYTE
+          io << source.to_bson_cstring
 
           io << 'i'  if (options & ::Regexp::IGNORECASE) != 0
           io << 'ms' if (options & ::Regexp::MULTILINE) != 0

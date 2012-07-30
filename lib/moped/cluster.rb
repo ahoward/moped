@@ -19,6 +19,17 @@ module Moped
       @auth ||= {}
     end
 
+    # Disconnects all nodes in the cluster. This should only be used in cases
+    # where you know you're not going to use the cluster on the thread anymore
+    # and need to force the connections to close.
+    #
+    # @return [ true ] True if the disconnect succeeded.
+    #
+    # @since 1.2.0
+    def disconnect
+      nodes.each { |node| node.disconnect } and true
+    end
+
     # Initialize the new cluster.
     #
     # @example Initialize the cluster.
@@ -44,7 +55,7 @@ module Moped
 
     # Returns the list of available nodes, refreshing 1) any nodes which were
     # down and ready to be checked again and 2) any nodes whose information is
-    # out of date.
+    # out of date. Arbiter nodes are not returned.
     #
     # @example Get the available nodes.
     #   cluster.nodes
@@ -53,18 +64,22 @@ module Moped
     #
     # @since 1.0.0
     def nodes
+      current_time = Time.new
+      down_boundary = current_time - @options[:down_interval]
+      refresh_boundary = current_time - @options[:refresh_interval]
+
       # Find the nodes that were down but are ready to be refreshed, or those
       # with stale connection information.
       needs_refresh, available = @nodes.partition do |node|
-        (node.down? && node.down_at < (Time.new - @options[:down_interval])) ||
-          node.needs_refresh?(Time.new - @options[:refresh_interval])
+        (node.down? && node.down_at < down_boundary) || node.needs_refresh?(refresh_boundary)
       end
 
       # Refresh those nodes.
       available.concat refresh(needs_refresh)
 
-      # Now return all the nodes that are available.
-      available.reject(&:down?)
+      # Now return all the nodes that are available and participating in the
+      # replica set.
+      available.reject { |node| node.down? || node.arbiter? }
     end
 
     # Refreshes information for each of the nodes provided. The node list
@@ -191,6 +206,10 @@ module Moped
           "Could not connect to any secondary or primary nodes for replica set #{inspect}"
         )
       end
+    end
+
+    def inspect
+      "<#{self.class.name} nodes=#{@nodes.inspect}>"
     end
 
     private

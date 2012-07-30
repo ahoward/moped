@@ -76,6 +76,16 @@ module Moped
       end
     end
 
+    # Force the node to disconnect from the server.
+    #
+    # @return [ nil ] nil.
+    #
+    # @since 1.2.0
+    def disconnect
+      auth.clear
+      connection.disconnect
+    end
+
     # Is the node down?
     #
     # @example Is the node down?
@@ -186,7 +196,7 @@ module Moped
     #
     # @since 1.0.0
     def hash
-      [ ip_address, port ].hash
+      resolved_address.hash
     end
 
     # Creat the new node.
@@ -224,8 +234,8 @@ module Moped
     # @return [ Message ] The result of the operation.
     #
     # @since 1.0.0
-    def insert(database, collection, documents)
-      process(Protocol::Insert.new(database, collection, documents))
+    def insert(database, collection, documents, options = {})
+      process(Protocol::Insert.new(database, collection, documents, options))
     end
 
     # Kill all provided cursors on the node.
@@ -288,6 +298,30 @@ module Moped
       @primary
     end
 
+    # Is the node an arbiter?
+    #
+    # @example Is the node an arbiter?
+    #   node.arbiter?
+    #
+    # @return [ true, false ] If the node is an arbiter.
+    #
+    # @since 1.0.0
+    def arbiter?
+      @arbiter
+    end
+
+    # Is the node passive?
+    #
+    # @example Is the node passive?
+    #   node.passive?
+    #
+    # @return [ true, false ] If the node is passive.
+    #
+    # @since 1.0.0
+    def passive?
+      @passive
+    end
+
     # Execute a query on the node.
     #
     # @example Execute a query.
@@ -343,6 +377,8 @@ module Moped
 
       @peers = peers.map { |peer| Node.new(peer) }
       @primary, @secondary = primary, secondary
+      @arbiter = info["arbiterOnly"]
+      @passive = info["passive"]
 
       if !primary && Threaded.executing?(:ensure_primary)
         raise Errors::ReplicaSetReconfigured, "#{inspect} is no longer the primary node."
@@ -396,6 +432,11 @@ module Moped
       process(Protocol::Update.new(database, collection, selector, change, options))
     end
 
+    def inspect
+      "<#{self.class.name} resolved_address=#{@resolved_address.inspect}>"
+    end
+
+
     private
 
     def auth
@@ -433,11 +474,6 @@ module Moped
       @connection ||= Connection.new
     end
 
-    def disconnect
-      auth.clear
-      connection.disconnect
-    end
-
     def connected?
       connection.connected?
     end
@@ -459,14 +495,6 @@ module Moped
     def connect
       connection.connect ip_address, port, timeout
       @down_at = nil
-
-      refresh
-    rescue Timeout::Error
-      raise Errors::ConnectionFailure, "Timed out connection to Mongo on #{address}"
-    rescue Errno::ECONNREFUSED
-      raise Errors::ConnectionFailure, "Could not connect to Mongo on #{address}"
-    rescue Errno::ECONNRESET
-      raise Errors::ConnectionFailure, "Connection reset to Mongo on #{address}"
     end
 
     def process(operation, &callback)
@@ -502,13 +530,13 @@ module Moped
       instrument_start = (logger = Moped.logger) && logger.debug? && Time.new
       yield
     ensure
-      log_operations(logger, operations, Time.new - instrument_start) if instrument_start && !$!
+      log_operations(logger, operations, 1000 * (Time.new.to_f - instrument_start.to_f)) if instrument_start
     end
 
-    def log_operations(logger, ops, duration)
-      prefix  = "  MOPED: #{address} "
+    def log_operations(logger, ops, duration_ms)
+      prefix  = "  MOPED: #{resolved_address} "
       indent  = " "*prefix.length
-      runtime = (" (%.1fms)" % duration)
+      runtime = (" (%.4fms)" % duration_ms)
 
       if ops.length == 1
         logger.debug prefix + ops.first.log_inspect + runtime

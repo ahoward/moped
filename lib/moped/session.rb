@@ -28,61 +28,129 @@ module Moped
   #   session.with(database: "admin").login("admin", "s3cr3t")
   #
   class Session
-    extend Forwardable
 
     # @attribute [r] cluster The session cluster.
     # @attribute [r] context The session context.
     # @attribute [r] options The session options.
     attr_reader :cluster, :context, :options
 
-    # @method [](collection)
     # Return +collection+ from the current database.
     #
     # @param (see Moped::Database#[])
+    #
     # @return (see Moped::Database#[])
-    delegate :[] => :current_database
+    #
+    # @since 1.0.0
+    def [](name)
+      current_database[name]
+    end
 
-    # @method collection_names
     # Return non system collection name from the current database.
     #
     # @param (see Moped::Database#collection_names)
+    #
     # @return (see Moped::Database#collection_names)
-    delegate :collection_names => :current_database
+    #
+    # @since 1.0.0
+    def collection_names
+      current_database.collection_names
+    end
 
-    # @method collections
     # Return non system collection name from the current database.
     #
     # @param (see Moped::Database#collections)
+    #
     # @return (see Moped::Database#collections)
-    delegate :collections => :current_database
+    #
+    # @since 1.0.0
+    def collections
+      current_database.collections
+    end
 
-    # @method command(command)
     # Run +command+ on the current database.
     #
     # @param (see Moped::Database#command)
+    #
     # @return (see Moped::Database#command)
-    delegate :command => :current_database
+    #
+    # @since 1.0.0
+    def command(op)
+      current_database.command(op)
+    end
 
-    # @method drop
+    # Get a list of all the database names for the session.
+    #
+    # @example Get all the database names.
+    #   session.database_names
+    #
+    # @note This requires admin access on your server.
+    #
+    # @return [ Array<String>] All the database names.
+    #
+    # @since 1.2.0
+    def database_names
+      databases["databases"].map { |database| database["name"] }
+    end
+
+    # Get information on all databases for the session. This includes the name,
+    # size on disk, and if it is empty or not.
+    #
+    # @example Get all the database information.
+    #   session.databases
+    #
+    # @note This requires admin access on your server.
+    #
+    # @return [ Hash ] The hash of database information, under the "databases"
+    #   key.
+    #
+    # @since 1.2.0
+    def databases
+      with(database: :admin).command(listDatabases: 1)
+    end
+
+    # Disconnects all nodes in the session's cluster. This should only be used
+    # in cases # where you know you're not going to use the cluster on the
+    # thread anymore and need to force the connections to close.
+    #
+    # @return [ true ] True if the disconnect succeeded.
+    #
+    # @since 1.2.0
+    def disconnect
+      cluster.disconnect
+    end
+
     # Drop the current database.
     #
     # @param (see Moped::Database#drop)
+    #
     # @return (see Moped::Database#drop)
-    delegate :drop => :current_database
+    #
+    # @since 1.0.0
+    def drop
+      current_database.drop
+    end
 
-    # @method login(username, password)
     # Log in with +username+ and +password+ on the current database.
     #
     # @param (see Moped::Database#login)
+    #
     # @raise (see Moped::Database#login)
-    delegate :login => :current_database
+    #
+    # @since 1.0.0
+    def login(username, password)
+      current_database.login(username, password)
+    end
 
-    # @method logout
     # Log out from the current database.
     #
     # @param (see Moped::Database#logout)
+    #
     # @raise (see Moped::Database#login)
-    delegate :logout => :current_database
+    #
+    # @since 1.0.0
+    def logout
+      current_database.logout
+    end
 
     # Get the session's consistency.
     #
@@ -182,12 +250,7 @@ module Moped
     #
     # @since 1.0.0
     def safety
-      safe = options[:safe]
-      case safe
-      when false then false
-      when true then { safe: true }
-      else safe
-      end
+      options[:safe].__safe_options__
     end
 
     # Switch the session's current database.

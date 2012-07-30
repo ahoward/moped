@@ -5,6 +5,7 @@ require "moped/bson/extensions/float"
 require "moped/bson/extensions/hash"
 require "moped/bson/extensions/integer"
 require "moped/bson/extensions/nil_class"
+require "moped/bson/extensions/object"
 require "moped/bson/extensions/regexp"
 require "moped/bson/extensions/string"
 require "moped/bson/extensions/symbol"
@@ -17,82 +18,74 @@ module Moped
 
       # @private
       class ::Array
-        extend  BSON::Extensions::Array::ClassMethods
-        include BSON::Extensions::Array
+        extend  Moped::BSON::Extensions::Array::ClassMethods
+        include Moped::BSON::Extensions::Array
       end
 
       # @private
       class ::FalseClass
-        extend  BSON::Extensions::Boolean::ClassMethods
-        include BSON::Extensions::FalseClass
+        extend  Moped::BSON::Extensions::Boolean::ClassMethods
+        include Moped::BSON::Extensions::FalseClass
       end
 
       # @private
       class ::Float
-        extend  BSON::Extensions::Float::ClassMethods
-        include BSON::Extensions::Float
+        extend  Moped::BSON::Extensions::Float::ClassMethods
+        include Moped::BSON::Extensions::Float
       end
 
       # @private
       class ::Hash
-        extend  BSON::Extensions::Hash::ClassMethods
-        include BSON::Extensions::Hash
+        extend  Moped::BSON::Extensions::Hash::ClassMethods
+        include Moped::BSON::Extensions::Hash
       end
 
       # @private
       class ::Integer
-        extend  BSON::Extensions::Integer::ClassMethods
-        include BSON::Extensions::Integer
+        extend  Moped::BSON::Extensions::Integer::ClassMethods
+        include Moped::BSON::Extensions::Integer
       end
 
       # @private
       class ::NilClass
-        extend  BSON::Extensions::NilClass::ClassMethods
-        include BSON::Extensions::NilClass
+        extend  Moped::BSON::Extensions::NilClass::ClassMethods
+        include Moped::BSON::Extensions::NilClass
+      end
+
+      # @private
+      class ::Object
+        include Moped::BSON::Extensions::Object
       end
 
       # @private
       class ::Regexp
-        extend  BSON::Extensions::Regexp::ClassMethods
-        include BSON::Extensions::Regexp
+        extend  Moped::BSON::Extensions::Regexp::ClassMethods
+        include Moped::BSON::Extensions::Regexp
       end
 
       # @private
       class ::String
-        extend  BSON::Extensions::String::ClassMethods
-        include BSON::Extensions::String
+        extend  Moped::BSON::Extensions::String::ClassMethods
+        include Moped::BSON::Extensions::String
       end
 
       # @private
       class ::Symbol
-        extend  BSON::Extensions::Symbol::ClassMethods
-        include BSON::Extensions::Symbol
+        extend  Moped::BSON::Extensions::Symbol::ClassMethods
+        include Moped::BSON::Extensions::Symbol
       end
 
       # @private
       class ::Time
-        extend  BSON::Extensions::Time::ClassMethods
-        include BSON::Extensions::Time
+        extend  Moped::BSON::Extensions::Time::ClassMethods
+        include Moped::BSON::Extensions::Time
       end
 
       # @private
       class ::TrueClass
-        extend  BSON::Extensions::Boolean::ClassMethods
-        include BSON::Extensions::TrueClass
+        extend  Moped::BSON::Extensions::Boolean::ClassMethods
+        include Moped::BSON::Extensions::TrueClass
       end
-
-      def force_binary(value)
-        begin
-          data = value.encode('utf-8')
-        rescue EncodingError
-          data = value.dup
-          data.force_encoding('utf-8')
-          raise unless data.valid_encoding?
-        end
-        data.force_encoding('binary')
-        data
-      end
-      module_function :force_binary
     end
   end
 end

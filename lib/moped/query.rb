@@ -73,11 +73,11 @@ module Moped
     # @yieldparam [ Hash ] document each matching document
     def each
       cursor = Cursor.new(session, operation)
-      cursor.to_enum.tap do |enum|
-        enum.each do |document|
-          yield document
-        end if block_given?
-      end
+      enum = cursor.to_enum
+      enum.each do |document|
+        yield document
+      end if block_given?
+      enum
     end
 
     # Explain the current query.
@@ -92,8 +92,9 @@ module Moped
       operation.selector = {
         "$query" => selector,
         "$orderby" => operation.selector.fetch("$orderby", {}),
-        "$explain" => true
-      } and first
+        "$explain" => true,
+        "$limit" => operation.selector.fetch("$limit", 1).abs * -1
+      } and each { |doc| return doc }
     end
 
     # Get the first matching document.
@@ -117,6 +118,22 @@ module Moped
       reply.documents.first
     end
     alias :one :first
+
+    # Apply an index hint to the query.
+    #
+    # @example Apply an index hint.
+    #   db[:people].find.hint("$natural" => 1)
+    #
+    # @param [ Hash ] hint The index hint.
+    #
+    # @return [ Query ] self
+    #
+    # @since 1.0.0
+    def hint(hint)
+      operation.selector = { "$query" => selector } unless operation.selector["$query"]
+      operation.selector["$hint"] = hint
+      self
+    end
 
     # Initialize the query.
     #
@@ -149,6 +166,45 @@ module Moped
     def limit(limit)
       operation.limit = limit
       self
+    end
+
+    # Execute a $findAndModify on the query.
+    #
+    # @example Find and modify a document, returning the original.
+    #   db[:bands].find.modify({ "$inc" => { likes: 1 }})
+    #
+    # @example Find and modify a document, returning the updated document.
+    #   db[:bands].find.modify({ "$inc" => { likes: 1 }}, new: true)
+    #
+    # @example Find and return a document, removing it from the database.
+    #   db[:bands].find.modify({}, remove: true)
+    #
+    # @example Find and return a document, upserting if no match found.
+    #   db[:bands].find.modify({}, upsert: true, new: true)
+    #
+    # @param [ Hash ] change The changes to make to the document.
+    # @param [ Hash ] options The options.
+    #
+    # @option options :new Set to true if you want to return the updated document.
+    # @option options :remove Set to true if the document should be deleted.
+    # @option options :upsert Set to true if you want to upsert
+    #
+    # @return [ Hash ] The document.
+    #
+    # @since 1.0.0
+    def modify(change, options = {})
+      command = {
+        findAndModify: collection.name,
+        query: selector
+      }.merge(options)
+
+      command[:sort] = operation.selector["$orderby"] if operation.selector["$orderby"]
+      command[:fields] = operation.fields if operation.fields
+      command[:update] = change unless options[:remove]
+
+      session.with(consistency: :strong) do |sess|
+        sess.command(command)["value"]
+      end
     end
 
     # Remove a single document matching the query's selector.
@@ -290,6 +346,11 @@ module Moped
     end
 
     private
+
+    def initialize_copy(other)
+      @operation = other.operation.dup
+      @selector = other.selector.dup
+    end
 
     def session
       collection.database.session

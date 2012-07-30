@@ -3,16 +3,28 @@ module Moped
 
     # @api private
     class Context
-      extend Forwardable
+
+      attr_reader :session
 
       def initialize(session)
         @session = session
       end
 
-      delegate :safety => :@session
-      delegate :safe?  => :@session
-      delegate :consistency  => :@session
-      delegate :cluster  => :@session
+      def safety
+        session.safety
+      end
+
+      def safe?
+        session.safe?
+      end
+
+      def consistency
+        session.consistency
+      end
+
+      def cluster
+        session.cluster
+      end
 
       def login(database, username, password)
         cluster.auth[database.to_s] = [username, password]
@@ -40,15 +52,15 @@ module Moped
         end
       end
 
-      def insert(database, collection, documents)
+      def insert(database, collection, documents, options = {})
         with_node do |node|
           if safe?
             node.pipeline do
-              node.insert(database, collection, documents)
+              node.insert(database, collection, documents, options)
               node.command("admin", { getlasterror: 1 }.merge(safety))
             end
           else
-            node.insert(database, collection, documents)
+            node.insert(database, collection, documents, options)
           end
         end
       end
@@ -98,8 +110,6 @@ module Moped
           end
         end
       end
-
     end
-
   end
 end

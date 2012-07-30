@@ -43,6 +43,8 @@ module Moped
       # @return [Number] the id of the cursor to get more documents from
       int64    :cursor_id
 
+      finalize
+
       undef op_code
       # @return [Number] OP_GETMORE operation code (2005)
       def op_code
@@ -72,8 +74,21 @@ module Moped
 
       def log_inspect
         type = "GET_MORE"
-
         "%-12s database=%s collection=%s limit=%s cursor_id=%s" % [type, database, collection, limit, cursor_id]
+      end
+
+      # Receive replies to the message.
+      #
+      # @example Receive replies.
+      #   message.receive_replies(connection)
+      #
+      # @param [ Connection ] connection The connection.
+      #
+      # @return [ Protocol::Reply ] The reply.
+      #
+      # @since 1.0.0
+      def receive_replies(connection)
+        connection.read
       end
     end
   end

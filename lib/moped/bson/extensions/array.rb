@@ -20,20 +20,23 @@ module Moped
 
         def __bson_dump__(io, key)
           io << Types::ARRAY
-          io << key
-          io << NULL_BYTE
+          io << key.to_bson_cstring
 
-          start = io.length
+          start = io.bytesize
 
           # write dummy length
           io << START_LENGTH
 
-          each_with_index do |value, index|
-            value.__bson_dump__(io, index.to_s)
+          index, length = 0, self.length
+
+          while index < length
+            slice(index).__bson_dump__(io, index.to_s)
+            index += 1
           end
+
           io << EOD
 
-          stop = io.length
+          stop = io.bytesize
           io[start, 4] = [stop - start].pack(INT32_PACK)
 
           io

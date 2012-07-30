@@ -5,20 +5,27 @@ module Moped
       module Symbol
         module ClassMethods
           def __bson_load__(io)
-            io.read(*io.read(4).unpack(INT32_PACK)).chop!.force_encoding('utf-8').intern
+            io.read(*io.read(4).unpack(INT32_PACK)).from_utf8_binary.chop!.intern
           end
         end
 
         def __bson_dump__(io, key)
           io << Types::SYMBOL
-          io << key
-          io << NULL_BYTE
+          io << key.to_bson_cstring
 
-          data = Extensions.force_binary(to_s)
+          data = to_utf8_binary
 
           io << [ data.bytesize + 1 ].pack(INT32_PACK)
           io << data
           io << NULL_BYTE
+        end
+
+        def to_bson_cstring
+          to_s.to_bson_cstring
+        end
+
+        def to_utf8_binary
+          to_s.to_utf8_binary
         end
       end
     end

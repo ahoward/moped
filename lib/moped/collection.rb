@@ -22,7 +22,11 @@ module Moped
     #
     # @since 1.0.0
     def drop
-      database.command(drop: name)
+      begin
+        database.command(drop: name)
+      rescue Moped::Errors::OperationFailure => e
+        false
+      end
     end
 
     # Build a query for this collection.
@@ -74,14 +78,17 @@ module Moped
     #   db[:people].insert([{name: "John"}, {name: "Joe"}])
     #
     # @param [ Hash, Array<Hash> ] documents The document(s) to insert.
+    # @param [ Array ] flags The flags, valid values are :continue_on_error.
+    #
+    # @option options [Array] :continue_on_error Whether to continue on error.
     #
     # @return [ nil ] nil.
     #
     # @since 1.0.0
-    def insert(documents)
+    def insert(documents, flags = nil)
       documents = [documents] unless documents.is_a?(Array)
       database.session.with(consistency: :strong) do |session|
-        session.context.insert(database.name, name, documents)
+        session.context.insert(database.name, name, documents, flags: flags || [])
       end
     end
   end

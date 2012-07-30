@@ -5,9 +5,12 @@ module Moped
       module FalseClass
         def __bson_dump__(io, key)
           io << Types::BOOLEAN
-          io << key
+          io << key.to_bson_cstring
           io << NULL_BYTE
-          io << NULL_BYTE
+        end
+
+        def __safe_options__
+          false
         end
       end
     end

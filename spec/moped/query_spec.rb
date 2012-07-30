@@ -2,6 +2,209 @@ require "spec_helper"
 
 describe Moped::Query do
 
+  [ :clone, :dup ].each do |method|
+
+    describe "##{method}" do
+
+      let(:session) do
+        Moped::Session.new([ "127.0.0.1:27017" ], database: "moped_test")
+      end
+
+      let(:users) do
+        session[:users]
+      end
+
+      let(:query) do
+        users.find.select(_id: 1)
+      end
+
+      let!(:copied) do
+        query.send(method)
+      end
+
+      it "dups the operation" do
+        copied.operation.should_not equal(query.operation)
+      end
+
+      it "dups the selector" do
+        copied.selector.should_not equal(query.selector)
+      end
+    end
+  end
+
+  shared_examples_for "Modify" do
+
+    before do
+      users.find.remove_all
+    end
+
+    let(:one) do
+      Moped::BSON::ObjectId.new
+    end
+
+    let(:two) do
+      Moped::BSON::ObjectId.new
+    end
+
+    let(:doc_one) do
+      { "_id" => one, "name" => "Placebo" }
+    end
+
+    let(:doc_two) do
+      { "_id" => two, "name" => "Underworld" }
+    end
+
+    describe "#modify" do
+
+      before do
+        users.insert([ doc_one, doc_two ])
+      end
+
+      context "when the selector matches" do
+
+        context "when providing no options" do
+
+          let!(:result) do
+            users.find(_id: one).modify({ "$set" => { name: "Tool" }})
+          end
+
+          it "returns the first matching document" do
+            result.should eq(doc_one)
+          end
+
+          it "updates the document in the database" do
+            users.find(_id: one).first["name"].should eq("Tool")
+          end
+        end
+
+        context "when providing options" do
+
+          context "when providing new: true" do
+
+            let!(:result) do
+              users.find(_id: one).modify({ "$set" => { name: "Tool" }}, new: true)
+            end
+
+            it "returns the updated document" do
+              result["name"].should eq("Tool")
+            end
+
+            it "updates the document in the database" do
+              users.find(_id: one).first["name"].should eq("Tool")
+            end
+          end
+
+          context "when providing new: false" do
+
+            let!(:result) do
+              users.find(_id: one).modify({ "$set" => { name: "Tool" }}, new: false)
+            end
+
+            it "returns the first matching document" do
+              result.should eq(doc_one)
+            end
+
+            it "updates the document in the database" do
+              users.find(_id: one).first["name"].should eq("Tool")
+            end
+          end
+
+          context "when providing remove: true" do
+
+            let!(:result) do
+              users.find(_id: one).modify({ "$set" => { name: "Tool" }}, remove: true)
+            end
+
+            it "returns the first matching document" do
+              result.should eq(doc_one)
+            end
+
+            it "removes the document from the database" do
+              users.find(_id: one).first.should be_nil
+            end
+          end
+
+          context "when providing remove: false" do
+
+            let!(:result) do
+              users.find(_id: one).modify({ "$set" => { name: "Tool" }}, remove: false)
+            end
+
+            it "returns the first matching document" do
+              result.should eq(doc_one)
+            end
+
+            it "removes the document from the database" do
+              users.find(_id: one).first["name"].should eq("Tool")
+            end
+          end
+
+          context "when providing upsert: true" do
+
+            context "when not providing new: true" do
+
+              let!(:result) do
+                users.find(likes: 1).modify({ "$set" => { name: "Tool" }}, upsert: true)
+              end
+
+              it "returns an empty hash" do
+                result.should be_empty
+              end
+
+              it "inserts the document in the database" do
+                users.find(likes: 1).first["name"].should eq("Tool")
+              end
+            end
+
+            context "when providing new: true" do
+
+              let!(:result) do
+                users.find(likes: 1).
+                  modify({ "$set" => { name: "Tool" }}, upsert: true, new: true)
+              end
+
+              it "returns the new document" do
+                result["name"].should eq("Tool")
+              end
+
+              it "inserts the document in the database" do
+                users.find(likes: 1).first["name"].should eq("Tool")
+              end
+            end
+          end
+
+          context "when providing upsert: false" do
+
+            let!(:result) do
+              users.find(likes: 1).modify({ "$set" => { name: "Tool" }}, remove: false)
+            end
+
+            it "returns the nil" do
+              result.should be_nil
+            end
+
+            it "does not insert into the database" do
+              users.find(likes: 1).first.should be_nil
+            end
+          end
+        end
+      end
+
+      context "when the selector does not match anything" do
+
+        let(:result) do
+          users.
+            find(_id: Moped::BSON::ObjectId.new).
+            modify("$set" => { name: "Underworld" })
+        end
+
+        it "returns nil" do
+          result.should be_nil
+        end
+      end
+    end
+  end
+
   shared_examples_for "Query" do
 
     let!(:scope) do
@@ -65,6 +268,30 @@ describe Moped::Query do
       end
     end
 
+    describe "#hint" do
+
+      let(:documents) do
+        [
+          { "_id" => Moped::BSON::ObjectId.new, "scope" => scope, "n" => 0 },
+          { "_id" => Moped::BSON::ObjectId.new, "scope" => scope, "n" => 1 }
+        ]
+      end
+
+      before do
+        users.insert(documents)
+      end
+
+      it "works transparently when specifying an existing index" do
+        users.find(scope: scope).hint(_id: 1).to_a.should eq documents
+      end
+
+      it "raises an error when hinting an invalid index" do
+        expect {
+          users.find(scope: scope).hint(scope: 1).to_a
+        }.to raise_error(Moped::Errors::QueryFailure, %r{failed with error 10113: "bad hint"})
+      end
+    end
+
     describe "#distinct" do
 
       let(:documents) do
@@ -122,10 +349,18 @@ describe Moped::Query do
 
       context "when a sort exists" do
 
-        let(:stats) do
-          Support::Stats.collect do
-            users.find(scope: scope).sort(_id: 1).explain
+        before do
+          2.times do |n|
+            users.insert({ likes: n })
           end
+        end
+
+        let(:explain) do
+          users.find(likes: { "$exists" => false }).sort(_id: 1).explain
+        end
+
+        let(:stats) do
+          Support::Stats.collect { explain }
         end
 
         let(:operation) do
@@ -134,19 +369,36 @@ describe Moped::Query do
 
         it "updates to a mongo advanced selector" do
           operation.selector.should eq(
-            "$query" => { scope: scope },
+            "$query" => { likes: { "$exists" => false }},
             "$explain" => true,
-            "$orderby" => { _id: 1 }
+            "$orderby" => { _id: 1 },
+            "$limit" => -1
           )
+        end
+
+        it "scans more than one document" do
+          explain["nscanned"].should eq(2)
+        end
+
+        it "scans more than one object" do
+          explain["nscannedObjects"].should eq(2)
         end
       end
 
       context "when no sort exists" do
 
-        let(:stats) do
-          Support::Stats.collect do
-            users.find(scope: scope).explain
+        before do
+          2.times do |n|
+            users.insert({ likes: n })
           end
+        end
+
+        let(:explain) do
+          users.find(created_at: { "$exists" => false }).explain
+        end
+
+        let(:stats) do
+          Support::Stats.collect { explain }
         end
 
         let(:operation) do
@@ -155,10 +407,19 @@ describe Moped::Query do
 
         it "updates to a mongo advanced selector" do
           operation.selector.should eq(
-            "$query" => { scope: scope },
+            "$query" => { created_at: { "$exists" => false }},
+            "$orderby" => {},
             "$explain" => true,
-            "$orderby" => {}
+            "$limit" => -1
           )
+        end
+
+        it "scans more than one document" do
+          explain["nscanned"].should eq(2)
+        end
+
+        it "scans more than one object" do
+          explain["nscannedObjects"].should eq(2)
         end
       end
     end
@@ -325,6 +586,7 @@ describe Moped::Query do
       :primary
     end
 
+    include_examples "Modify"
     include_examples "Query"
 
     describe "#each" do
@@ -403,6 +665,7 @@ describe Moped::Query do
       :primary
     end
 
+    include_examples "Modify"
     include_examples "Query"
   end
 

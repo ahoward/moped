@@ -271,6 +271,23 @@ module Moped
           fields << name
         end
 
+        # Declares the message class as complete, and defines its serialization
+        # method from the declared fields.
+        def finalize
+          class_eval <<-EOS, __FILE__, __LINE__ + 1
+            def serialize(buffer = "")
+              start = buffer.bytesize
+
+              #{fields.map { |f| "serialize_#{f}(buffer)" }.join("\n")}
+
+              self.length = buffer.bytesize - start
+              buffer[start, 4] = serialize_length ""
+              buffer
+            end
+            alias to_s serialize
+          EOS
+        end
+
         private
 
         # This ensures that subclasses of the primary wire message classes have
@@ -283,25 +300,27 @@ module Moped
 
       end
 
+      # Default implementation for a message is to do nothing when receiving
+      # replies.
+      #
+      # @example Receive replies.
+      #   message.receive_replies(connection)
+      #
+      # @param [ Connection ] connection The connection.
+      #
+      # @since 1.0.0
+      #
+      # @return [ nil ] nil.
+      def receive_replies(connection); end
+
       # Serializes the message and all of its fields to a new buffer or to the
       # provided buffer.
       #
       # @param [String] buffer a buffer to serialize to
       # @return [String] the result of serliazing this message
       def serialize(buffer = "")
-        buffer.tap do
-          start = buffer.length
-
-          self.class.fields.each do |field|
-            __send__ :"serialize_#{field}", buffer
-          end
-
-          self.length = buffer.length - start
-
-          buffer[start, 4] = serialize_length("")
-        end
+        raise NotImplementedError, "This method is generated after calling #finalize on a message class"
       end
-
       alias to_s serialize
 
       # @return [String] the nicely formatted version of the message
